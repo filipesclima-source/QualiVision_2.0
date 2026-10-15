@@ -1,0 +1,48 @@
+{% extends 'base.html' %}
+{% block content %}
+<h2>👥 Gestão de Usuários</h2>
+
+<div class="toolbar">
+  <a href="{{ url_for('usuario_novo') }}" class="btn">+ Novo Usuário</a>
+</div>
+
+<table>
+  <thead>
+    <tr>
+      <th>ID</th><th>Usuário</th><th>Perfil</th><th>Status</th>
+      <th>Criado em</th><th>Ações</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for u in usuarios %}
+      <tr>
+        <td>{{ u.id }}</td>
+        <td>{{ u.username }}</td>
+        <td>{{ u.perfil }}</td>
+        <td>
+          {% if u.ativo %}
+            <span class="badge badge-ok">Ativo</span>
+          {% else %}
+            <span class="badge badge-off">Inativo</span>
+          {% endif %}
+        </td>
+        <td>{{ u.criado_em }}</td>
+        <td class="acoes-cell">
+          <a class="btn btn-mini"
+             href="{{ url_for('usuario_editar', uid=u.id) }}">Editar</a>
+          {% if u.id != session.usuario_id %}
+            <form method="post"
+                  action="{{ url_for('usuario_toggle', uid=u.id) }}"
+                  onsubmit="return confirm('Confirma alterar o status deste usuário?');">
+              <button type="submit"
+                      class="btn btn-mini {% if u.ativo %}btn-warn{% else %}btn-sec{% endif %}">
+                {% if u.ativo %}Desativar{% else %}Ativar{% endif %}
+              </button>
+            </form>
+          {% endif %}
+        </td>
+      </tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% endblock %}

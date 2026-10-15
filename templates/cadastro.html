@@ -1,0 +1,44 @@
+{% extends 'base.html' %}
+{% block content %}
+<h2>📝 Cadastro de Ocorrência</h2>
+<form method="post" class="form-grid">
+  <div>
+    <label>Data *</label>
+    <input type="date" name="data" required value="{{ request.form.get('data','') }}">
+  </div>
+  <div>
+    <label>Setor *</label>
+    <select name="setor" required>
+      <option value="">Selecione…</option>
+      {% for s in setores %}
+        <option {% if request.form.get('setor')==s %}selected{% endif %}>{{ s }}</option>
+      {% endfor %}
+    </select>
+  </div>
+  <div>
+    <label>LOG *</label>
+    <input type="text" name="log" placeholder="Ex.: LOG-2024-001" required
+           value="{{ request.form.get('log','') }}">
+  </div>
+  <div>
+    <label>Tipo *</label>
+    <select name="tipo" required>
+      <option value="">Selecione…</option>
+      {% for t in tipos %}
+        <option {% if request.form.get('tipo')==t %}selected{% endif %}>{{ t }}</option>
+      {% endfor %}
+    </select>
+  </div>
+  <div class="full">
+    <label>Motivo *</label>
+    <textarea name="motivo" rows="3" required>{{ request.form.get('motivo','') }}</textarea>
+  </div>
+  <div class="full">
+    <label>Observação</label>
+    <textarea name="observacao" rows="3">{{ request.form.get('observacao','') }}</textarea>
+  </div>
+  <div class="full">
+    <button type="submit">Cadastrar Registro</button>
+  </div>
+</form>
+{% endblock %}

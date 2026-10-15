@@ -1,0 +1,98 @@
+{% extends 'base.html' %}
+{% block content %}
+<h2>🔍 Busca de Registros</h2>
+
+<div class="panel">
+  <form method="get" class="filter-row">
+    <div><label>Data inicial</label>
+      <input type="date" name="data_ini" value="{{ filtros.data_ini }}"></div>
+    <div><label>Data final</label>
+      <input type="date" name="data_fim" value="{{ filtros.data_fim }}"></div>
+    <div><label>Setor</label>
+      <select name="setor">
+        <option value="">Todos</option>
+        {% for s in setores %}
+          <option {% if filtros.setor==s %}selected{% endif %}>{{ s }}</option>
+        {% endfor %}
+      </select></div>
+    <div><label>Tipo</label>
+      <select name="tipo">
+        <option value="">Todos</option>
+        {% for t in tipos %}
+          <option {% if filtros.tipo==t %}selected{% endif %}>{{ t }}</option>
+        {% endfor %}
+      </select></div>
+    <div><label>LOG</label>
+      <input type="text" name="log" value="{{ filtros.log }}"></div>
+    <div><label>Motivo contém</label>
+      <input type="text" name="motivo" value="{{ filtros.motivo }}"></div>
+    <div><button type="submit">Filtrar</button></div>
+    <div><a href="{{ url_for('busca') }}" class="btn btn-sec">Limpar</a></div>
+  </form>
+</div>
+
+{% if 'exportar' in permissoes %}
+<div class="toolbar">
+  <strong>Exportar resultados:</strong>
+  <a class="btn btn-sec btn-mini"
+     href="{{ url_for('exportar_csv', **request.args) }}">CSV</a>
+  <a class="btn btn-sec btn-mini"
+     href="{{ url_for('exportar_excel', **request.args) }}">Excel (.xlsx)</a>
+  <a class="btn btn-sec btn-mini"
+     href="{{ url_for('exportar_pdf', **request.args) }}">PDF</a>
+  <span class="small">(aplica os filtros atuais)</span>
+</div>
+{% endif %}
+
+<p><strong>Total encontrado:</strong> {{ registros|length }}</p>
+
+<table>
+  <thead>
+    <tr>
+      <th>Data</th><th>Setor</th><th>LOG</th><th>Tipo</th>
+      <th>Motivo</th><th>Observação</th><th>Registrado por</th>
+      {% if 'editar_registro' in permissoes or 'excluir_registro' in permissoes %}
+        <th>Ações</th>
+      {% endif %}
+    </tr>
+  </thead>
+  <tbody>
+    {% for r in registros %}
+      <tr>
+        <td>{{ r.data }}</td>
+        <td>{{ r.setor }}</td>
+        <td>{{ r.log }}</td>
+        <td>{{ r.tipo }}</td>
+        <td>{{ r.motivo }}</td>
+        <td>{{ r.observacao }}</td>
+        <td>
+          {{ r.criado_por }}
+          {% if r.atualizado_por %}
+            <br><span class="badge badge-info">
+              Editado por {{ r.atualizado_por }}
+            </span>
+          {% endif %}
+        </td>
+        {% if 'editar_registro' in permissoes or 'excluir_registro' in permissoes %}
+        <td class="acoes-cell">
+          {% if 'editar_registro' in permissoes %}
+            <a class="btn btn-mini"
+               href="{{ url_for('registro_editar', rid=r.id) }}">Editar</a>
+          {% endif %}
+          {% if 'excluir_registro' in permissoes %}
+            <form method="post"
+                  action="{{ url_for('registro_excluir', rid=r.id) }}"
+                  onsubmit="return confirm('Confirma a exclusão definitiva deste registro?');">
+              <button type="submit" class="btn btn-warn btn-mini">Excluir</button>
+            </form>
+          {% endif %}
+        </td>
+        {% endif %}
+      </tr>
+    {% else %}
+      <tr><td colspan="8" style="text-align:center;color:#6b7280;">
+        Nenhum registro encontrado.</td></tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% endblock %}

@@ -1,0 +1,63 @@
+{% extends 'base.html' %}
+{% block content %}
+<h2>🕵️ Log de Auditoria</h2>
+<p class="small">Últimos 1000 eventos registrados no sistema.</p>
+
+<div class="panel">
+  <form method="get" class="filter-row">
+    <div><label>Usuário contém</label>
+      <input type="text" name="usuario" value="{{ filtros.usuario }}"></div>
+    <div><label>Ação</label>
+      <select name="acao">
+        <option value="">Todas</option>
+        {% for a in acoes %}
+          <option {% if filtros.acao==a %}selected{% endif %}>{{ a }}</option>
+        {% endfor %}
+      </select></div>
+    <div><label>Data inicial</label>
+      <input type="date" name="data_ini" value="{{ filtros.data_ini }}"></div>
+    <div><label>Data final</label>
+      <input type="date" name="data_fim" value="{{ filtros.data_fim }}"></div>
+    <div><button type="submit">Filtrar</button></div>
+    <div><a href="{{ url_for('auditoria_lista') }}" class="btn btn-sec">Limpar</a></div>
+  </form>
+</div>
+
+<table>
+  <thead>
+    <tr>
+      <th>#</th><th>Data/Hora</th><th>Usuário</th><th>Perfil</th>
+      <th>Ação</th><th>Entidade</th><th>ID</th><th>Detalhes</th><th>IP</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for l in logs %}
+      <tr>
+        <td>{{ l.id }}</td>
+        <td>{{ l.timestamp.replace('T',' ')[:19] }}</td>
+        <td>{{ l.usuario or '-' }}</td>
+        <td>{{ l.perfil or '-' }}</td>
+        <td>
+          <span class="badge
+            {% if 'EXCLUIR' in l.acao or 'FALHA' in l.acao or 'NEGADO' in l.acao %}
+              badge-off
+            {% elif 'LOGIN_OK' in l.acao or 'INSERIR' in l.acao %}
+              badge-ok
+            {% else %}
+              badge-info
+            {% endif %}">
+            {{ l.acao }}
+          </span>
+        </td>
+        <td>{{ l.entidade or '-' }}</td>
+        <td>{{ l.entidade_id if l.entidade_id is not none else '-' }}</td>
+        <td>{{ l.detalhes or '' }}</td>
+        <td>{{ l.ip or '-' }}</td>
+      </tr>
+    {% else %}
+      <tr><td colspan="9" style="text-align:center;color:#6b7280;">
+        Nenhum evento registrado.</td></tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% endblock %}

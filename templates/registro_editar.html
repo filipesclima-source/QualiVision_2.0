@@ -1,0 +1,49 @@
+{% extends 'base.html' %}
+{% block content %}
+<h2>✏️ Editar Registro #{{ r.id }}</h2>
+<p class="small">
+  Criado por <strong>{{ r.criado_por }}</strong> em {{ r.criado_em }}
+  {% if r.atualizado_por %}
+    · Última edição por <strong>{{ r.atualizado_por }}</strong> em {{ r.atualizado_em }}
+  {% endif %}
+</p>
+
+<form method="post" class="form-grid">
+  <div>
+    <label>Data *</label>
+    <input type="date" name="data" required value="{{ r.data }}">
+  </div>
+  <div>
+    <label>Setor *</label>
+    <select name="setor" required>
+      {% for s in setores %}
+        <option {% if r.setor==s %}selected{% endif %}>{{ s }}</option>
+      {% endfor %}
+    </select>
+  </div>
+  <div>
+    <label>LOG *</label>
+    <input type="text" name="log" required value="{{ r.log or '' }}">
+  </div>
+  <div>
+    <label>Tipo *</label>
+    <select name="tipo" required>
+      {% for t in tipos %}
+        <option {% if r.tipo==t %}selected{% endif %}>{{ t }}</option>
+      {% endfor %}
+    </select>
+  </div>
+  <div class="full">
+    <label>Motivo *</label>
+    <textarea name="motivo" rows="3" required>{{ r.motivo }}</textarea>
+  </div>
+  <div class="full">
+    <label>Observação</label>
+    <textarea name="observacao" rows="3">{{ r.observacao or '' }}</textarea>
+  </div>
+  <div class="full">
+    <button type="submit">Salvar alterações</button>
+    <a href="{{ url_for('busca') }}" class="btn btn-sec">Cancelar</a>
+  </div>
+</form>
+{% endblock %}

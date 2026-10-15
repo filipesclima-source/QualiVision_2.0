@@ -1,0 +1,142 @@
+{% extends 'base.html' %}
+{% block content %}
+<h2>📊 Dashboard de Indicadores</h2>
+
+<div class="panel">
+  <form id="filtroDash" class="filter-row" onsubmit="event.preventDefault(); carregar();">
+    <div><label>Data inicial</label>
+      <input type="date" name="data_ini" id="data_ini"></div>
+    <div><label>Data final</label>
+      <input type="date" name="data_fim" id="data_fim"></div>
+    <div><button type="submit">Aplicar filtro</button></div>
+    <div>
+      <button type="button" class="btn btn-sec"
+              onclick="limpar()">Limpar</button>
+    </div>
+  </form>
+  <p class="small" id="periodoTxt"></p>
+</div>
+
+<div class="cards">
+  <div class="card">
+    <span class="label">Total de Ocorrências</span>
+    <span class="value" id="total">–</span>
+  </div>
+  <div class="card">
+    <span class="label">Setores Envolvidos</span>
+    <span class="value" id="qtdSetores">–</span>
+  </div>
+  <div class="card">
+    <span class="label">Tipos Distintos</span>
+    <span class="value" id="qtdTipos">–</span>
+  </div>
+</div>
+
+<div class="grid-charts">
+  <div class="chart-box"><canvas id="chartSetor"></canvas></div>
+  <div class="chart-box"><canvas id="chartTipo"></canvas></div>
+  <div class="chart-box"><canvas id="chartMes"></canvas></div>
+  <div class="chart-box"><canvas id="chartLog"></canvas></div>
+</div>
+
+<script>
+const PALETA = ['#0f766e','#0ea5e9','#f59e0b','#ef4444','#8b5cf6',
+                '#10b981','#ec4899','#6366f1','#84cc16','#f97316'];
+const charts = {};
+
+function destruir(id) {
+  if (charts[id]) { charts[id].destroy(); delete charts[id]; }
+}
+
+function carregar() {
+  const di = document.getElementById('data_ini').value;
+  const df = document.getElementById('data_fim').value;
+  const url = new URL('{{ url_for("api_dashboard") }}', window.location.origin);
+  if (di) url.searchParams.set('data_ini', di);
+  if (df) url.searchParams.set('data_fim', df);
+
+  fetch(url).then(r => r.json()).then(d => {
+    document.getElementById('total').textContent      = d.total;
+    document.getElementById('qtdSetores').textContent = Object.keys(d.por_setor).length;
+    document.getElementById('qtdTipos').textContent   = Object.keys(d.por_tipo).length;
+
+    const partes = [];
+    if (d.periodo.data_ini) partes.push('de ' + d.periodo.data_ini);
+    if (d.periodo.data_fim) partes.push('até ' + d.periodo.data_fim);
+    document.getElementById('periodoTxt').textContent =
+      partes.length ? 'Período aplicado: ' + partes.join(' ') : 'Sem filtro de período (todos os registros)';
+
+    destruir('setor');
+    charts['setor'] = new Chart(document.getElementById('chartSetor'), {
+      type: 'bar',
+      data: {
+        labels: Object.keys(d.por_setor),
+        datasets: [{ label: 'Ocorrências', data: Object.values(d.por_setor),
+                     backgroundColor: '#0f766e' }]
+      },
+      options: {
+        responsive: true, maintainAspectRatio: false,
+        plugins: { title: { display: true, text: 'Ocorrências por Setor' },
+                   legend: { display: false } },
+        scales: { y: { beginAtZero: true, ticks: { precision: 0 } } }
+      }
+    });
+
+    destruir('tipo');
+    charts['tipo'] = new Chart(document.getElementById('chartTipo'), {
+      type: 'doughnut',
+      data: {
+        labels: Object.keys(d.por_tipo),
+        datasets: [{ data: Object.values(d.por_tipo), backgroundColor: PALETA }]
+      },
+      options: {
+        responsive: true, maintainAspectRatio: false,
+        plugins: { title: { display: true, text: 'Distribuição por Tipo' },
+                   legend: { position: 'right' } }
+      }
+    });
+
+    destruir('mes');
+    charts['mes'] = new Chart(document.getElementById('chartMes'), {
+      type: 'line',
+      data: {
+        labels: Object.keys(d.por_mes),
+        datasets: [{ label: 'Ocorrências', data: Object.values(d.por_mes),
+                     borderColor: '#0ea5e9',
+                     backgroundColor: 'rgba(14,165,233,.2)',
+                     fill: true, tension: .3 }]
+      },
+      options: {
+        responsive: true, maintainAspectRatio: false,
+        plugins: { title: { display: true, text: 'Evolução Mensal' } },
+        scales: { y: { beginAtZero: true, ticks: { precision: 0 } } }
+      }
+    });
+
+    destruir('log');
+    charts['log'] = new Chart(document.getElementById('chartLog'), {
+      type: 'bar',
+      data: {
+        labels: Object.keys(d.por_log),
+        datasets: [{ label: 'Ocorrências', data: Object.values(d.por_log),
+                     backgroundColor: '#dc2626' }]
+      },
+      options: {
+        responsive: true, maintainAspectRatio: false,
+        plugins: { title: { display: true, text: 'Ocorrências por LOG' },
+                   legend: { display: false } },
+        scales: { y: { beginAtZero: true, ticks: { precision: 0 } } }
+      }
+    });
+  });
+}
+
+function limpar() {
+  document.getElementById('data_ini').value = '';
+  document.getElementById('data_fim').value = '';
+  carregar();
+}
+
+carregar();
+</script>
+{% endblock %}
