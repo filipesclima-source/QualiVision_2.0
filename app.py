@@ -727,10 +727,9 @@ def auditoria_lista():
     sql += " ORDER BY id DESC LIMIT 1000"
 
     rows = get_db().execute(sql, params).fetchall()
-acoes = [r['acao'] for r in get_db().execute(
+    acoes = [r['acao'] for r in get_db().execute(
     "SELECT DISTINCT acao FROM auditoria ORDER BY acao"
-).fetchall()]
-
+    ).fetchall()]
     return render_template('auditoria.html', logs=rows, filtros=f, acoes=acoes)
 
 # ==================================================================
