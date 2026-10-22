@@ -77,20 +77,41 @@ import os
 import psycopg2
 import psycopg2.extras
 
+class PGConnection:
+    """Wrapper que faz o psycopg2 imitar a interface do sqlite3."""
+    def __init__(self, conn):
+        self._conn = conn
+        self._conn.cursor_factory = psycopg2.extras.RealDictCursor
+
+    def execute(self, sql, params=None):
+        cur = self._conn.cursor()
+        cur.execute(sql, params or ())
+        return cur
+
+    def commit(self):
+        return self._conn.commit()
+
+    def rollback(self):
+        return self._conn.rollback()
+
+    def close(self):
+        return self._conn.close()
+
+    def __getattr__(self, name):
+        return getattr(self._conn, name)
+
 # Lê a URL do banco da variável de ambiente.
 # Em produção (Render), será a URL do Neon.
 # Localmente, se não existir, usa SQLite (opcional para testes).
+
 DATABASE_URL = os.environ.get('DATABASE_URL')
 
 def get_db():
     if 'db' not in g:
         if DATABASE_URL:
-            # Produção: PostgreSQL (Neon)
-            conn = psycopg2.connect(DATABASE_URL, sslmode='require')
-            conn.cursor_factory = psycopg2.extras.RealDictCursor
-            g.db = conn
+            raw = psycopg2.connect(DATABASE_URL, sslmode='require')
+            g.db = PGConnection(raw)        # 👈 ESSENCIAL: envolver com o wrapper
         else:
-            # Desenvolvimento local: SQLite (fallback)
             g.db = sqlite3.connect(DB_PATH)
             g.db.row_factory = sqlite3.Row
     return g.db
