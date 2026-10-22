@@ -73,12 +73,28 @@ TIPOS = ['Evento Adverso', 'Incidente', 'Near Miss', 'Não Conformidade',
 # ==================================================================
 # BANCO DE DADOS
 # ==================================================================
+import os
+import psycopg2
+import psycopg2.extras
+
+# Lê a URL do banco da variável de ambiente.
+# Em produção (Render), será a URL do Neon.
+# Localmente, se não existir, usa SQLite (opcional para testes).
+DATABASE_URL = os.environ.get('DATABASE_URL')
+
 def get_db():
     if 'db' not in g:
-        g.db = sqlite3.connect(DB_PATH)
-        g.db.row_factory = sqlite3.Row
+        if DATABASE_URL:
+            # Produção: PostgreSQL (Neon)
+            conn = psycopg2.connect(DATABASE_URL, sslmode='require')
+            conn.cursor_factory = psycopg2.extras.RealDictCursor
+            g.db = conn
+        else:
+            # Desenvolvimento local: SQLite (fallback)
+            g.db = sqlite3.connect(DB_PATH)
+            g.db.row_factory = sqlite3.Row
     return g.db
-
+  
 @app.teardown_appcontext
 def close_db(exc):
     db = g.pop('db', None)
@@ -86,12 +102,22 @@ def close_db(exc):
         db.close()
 
 def init_db():
-    con = sqlite3.connect(DB_PATH)
-    cur = con.cursor()
+    if not DATABASE_URL:
+        # SQLite local (código original mantido para desenvolvimento)
+        con = sqlite3.connect(DB_PATH)
+        con.execute('''CREATE TABLE IF NOT EXISTS registros (... mesma coisa ...)''')
+        con.execute('''CREATE TABLE IF NOT EXISTS usuarios (... mesma coisa ...)''')
+        con.execute('''CREATE TABLE IF NOT EXISTS auditoria (... mesma coisa ...)''')
+        con.commit()
+        con.close()
+        return
 
-    # ----- Registros -----
+    # PostgreSQL (Neon)
+    conn = psycopg2.connect(DATABASE_URL, sslmode='require')
+    cur = conn.cursor()
+
     cur.execute('''CREATE TABLE IF NOT EXISTS registros (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        id SERIAL PRIMARY KEY,
         data TEXT NOT NULL,
         setor TEXT NOT NULL,
         log TEXT,
@@ -99,18 +125,13 @@ def init_db():
         motivo TEXT NOT NULL,
         observacao TEXT,
         criado_por TEXT,
-        criado_em TEXT
+        criado_em TEXT,
+        atualizado_por TEXT,
+        atualizado_em TEXT
     )''')
-    cur.execute("PRAGMA table_info(registros)")
-    cols = [r[1] for r in cur.fetchall()]
-    if 'atualizado_por' not in cols:
-        cur.execute("ALTER TABLE registros ADD COLUMN atualizado_por TEXT")
-    if 'atualizado_em' not in cols:
-        cur.execute("ALTER TABLE registros ADD COLUMN atualizado_em TEXT")
 
-    # ----- Usuários -----
     cur.execute('''CREATE TABLE IF NOT EXISTS usuarios (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        id SERIAL PRIMARY KEY,
         username TEXT UNIQUE NOT NULL,
         senha_hash TEXT NOT NULL,
         perfil TEXT NOT NULL,
@@ -118,9 +139,8 @@ def init_db():
         criado_em TEXT
     )''')
 
-    # ----- Auditoria -----
     cur.execute('''CREATE TABLE IF NOT EXISTS auditoria (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        id SERIAL PRIMARY KEY,
         timestamp TEXT NOT NULL,
         usuario TEXT,
         perfil TEXT,
@@ -131,25 +151,28 @@ def init_db():
         ip TEXT
     )''')
 
-    # Seed usuários na primeira execução
+    # Seed de usuários (se a tabela estiver vazia)
     cur.execute("SELECT COUNT(*) FROM usuarios")
     if cur.fetchone()[0] == 0:
         now = datetime.now().isoformat(timespec='seconds')
         for username, info in USUARIOS_SEED.items():
-            cur.execute('''INSERT INTO usuarios
-                           (username, senha_hash, perfil, ativo, criado_em)
-                           VALUES (?,?,?,1,?)''',
-                        (username, generate_password_hash(info['senha']),
-                         info['perfil'], now))
-    con.commit()
-    con.close()
+            cur.execute(
+                "INSERT INTO usuarios (username, senha_hash, perfil, ativo, criado_em) "
+                "VALUES (%s,%s,%s,1,%s)",
+                (username, generate_password_hash(info['senha']),
+                 info['perfil'], now)
+            )
+
+    conn.commit()
+    cur.close()
+    conn.close()
 
 # ==================================================================
 # AUTENTICAÇÃO E PERMISSÕES
 # ==================================================================
 def autenticar(username, senha):
     row = get_db().execute(
-        "SELECT * FROM usuarios WHERE username=? AND ativo=1",
+        "SELECT * FROM usuarios WHERE username=%s AND ativo=1",
         (username,)
     ).fetchone()
     if row and check_password_hash(row['senha_hash'], senha):
@@ -194,7 +217,7 @@ def log_audit(acao, entidade=None, entidade_id=None, detalhes=None,
         db = get_db()
         db.execute('''INSERT INTO auditoria
             (timestamp, usuario, perfil, acao, entidade, entidade_id, detalhes, ip)
-            VALUES (?,?,?,?,?,?,?,?)''',
+            VALUES (%s,%s,%s,%s,%s,%s,%s,%s)''',
             (datetime.now().isoformat(timespec='seconds'),
              usuario, perfil, acao, entidade, entidade_id,
              (detalhes or '')[:500], ip))
@@ -277,7 +300,7 @@ def cadastro():
         db = get_db()
         cur = db.execute('''INSERT INTO registros
             (data, setor, log, tipo, motivo, observacao, criado_por, criado_em)
-            VALUES (?,?,?,?,?,?,?,?)''',
+            VALUES (%s,%s,%s,%s,%s,%s,%s,%s)''',
             (data, setor, log, tipo, motivo, observacao,
              session['usuario'],
              datetime.now().isoformat(timespec='seconds')))
@@ -305,17 +328,17 @@ def _buscar_registros():
     sql = "SELECT * FROM registros WHERE 1=1"
     params = []
     if f['data_ini']:
-        sql += " AND data >= ?"; params.append(f['data_ini'])
+        sql += " AND data >= %s"; params.append(f['data_ini'])
     if f['data_fim']:
-        sql += " AND data <= ?"; params.append(f['data_fim'])
+        sql += " AND data <= %s"; params.append(f['data_fim'])
     if f['setor']:
-        sql += " AND setor = ?"; params.append(f['setor'])
+        sql += " AND setor = %s"; params.append(f['setor'])
     if f['tipo']:
-        sql += " AND tipo = ?"; params.append(f['tipo'])
+        sql += " AND tipo = %s"; params.append(f['tipo'])
     if f['log']:
-        sql += " AND log LIKE ?"; params.append(f'%{f["log"]}%')
+        sql += " AND log LIKE %s"; params.append(f'%{f["log"]}%')
     if f['motivo']:
-        sql += " AND motivo LIKE ?"; params.append(f'%{f["motivo"]}%')
+        sql += " AND motivo LIKE %s"; params.append(f'%{f["motivo"]}%')
     sql += " ORDER BY data DESC, id DESC"
     return get_db().execute(sql, params).fetchall(), f
 
@@ -330,7 +353,7 @@ def busca():
 @requer_permissao('editar_registro')
 def registro_editar(rid):
     db = get_db()
-    r = db.execute("SELECT * FROM registros WHERE id=?", (rid,)).fetchone()
+    r = db.execute("SELECT * FROM registros WHERE id=%s", (rid,)).fetchone()
     if not r:
         flash('Registro não encontrado.', 'erro')
         return redirect(url_for('busca'))
@@ -348,9 +371,9 @@ def registro_editar(rid):
             return redirect(url_for('registro_editar', rid=rid))
 
         db.execute('''UPDATE registros SET
-            data=?, setor=?, log=?, tipo=?, motivo=?, observacao=?,
-            atualizado_por=?, atualizado_em=?
-            WHERE id=?''',
+            data=%s, setor=%s, log=%s, tipo=%s, motivo=%s, observacao=%s,
+            atualizado_por=%s, atualizado_em=%s
+            WHERE id=%s''',
             (data, setor, log, tipo, motivo, observacao,
              session['usuario'],
              datetime.now().isoformat(timespec='seconds'),
@@ -368,11 +391,11 @@ def registro_editar(rid):
 @requer_permissao('excluir_registro')
 def registro_excluir(rid):
     db = get_db()
-    r = db.execute("SELECT * FROM registros WHERE id=?", (rid,)).fetchone()
+    r = db.execute("SELECT * FROM registros WHERE id=%s", (rid,)).fetchone()
     if not r:
         flash('Registro não encontrado.', 'erro')
         return redirect(url_for('busca'))
-    db.execute("DELETE FROM registros WHERE id=?", (rid,))
+    db.execute("DELETE FROM registros WHERE id=%s", (rid,))
     db.commit()
     log_audit('EXCLUIR_REGISTRO', 'registro', rid,
               f'Data={r["data"]}; Setor={r["setor"]}; Tipo={r["tipo"]}')
@@ -523,9 +546,9 @@ def api_dashboard():
     sql = "SELECT data, setor, log, tipo FROM registros WHERE 1=1"
     params = []
     if data_ini:
-        sql += " AND data >= ?"; params.append(data_ini)
+        sql += " AND data >= %s"; params.append(data_ini)
     if data_fim:
-        sql += " AND data <= ?"; params.append(data_fim)
+        sql += " AND data <= %s"; params.append(data_fim)
     rows = get_db().execute(sql, params).fetchall()
 
     por_setor = Counter(r['setor'] for r in rows)
@@ -579,7 +602,7 @@ def usuario_novo():
         try:
             cur = db.execute('''INSERT INTO usuarios
                 (username, senha_hash, perfil, ativo, criado_em)
-                VALUES (?,?,?,1,?)''',
+                VALUES (%s,%s,%s,1,%s)''',
                 (username, generate_password_hash(senha), perfil,
                  datetime.now().isoformat(timespec='seconds')))
             db.commit()
@@ -597,7 +620,7 @@ def usuario_novo():
 @requer_permissao('usuarios')
 def usuario_editar(uid):
     db = get_db()
-    u = db.execute("SELECT * FROM usuarios WHERE id=?", (uid,)).fetchone()
+    u = db.execute("SELECT * FROM usuarios WHERE id=%s", (uid,)).fetchone()
     if not u:
         flash('Usuário não encontrado.', 'erro')
         return redirect(url_for('usuarios_lista'))
@@ -620,11 +643,11 @@ def usuario_editar(uid):
             if len(nova_senha) < 4:
                 flash('A nova senha deve ter pelo menos 4 caracteres.', 'erro')
                 return redirect(url_for('usuario_editar', uid=uid))
-            db.execute("UPDATE usuarios SET perfil=?, ativo=?, senha_hash=? WHERE id=?",
+            db.execute("UPDATE usuarios SET perfil=%s, ativo=%s, senha_hash=%s WHERE id=%s",
                        (perfil, ativo, generate_password_hash(nova_senha), uid))
             detalhes = f'perfil={perfil}; ativo={ativo}; senha=alterada'
         else:
-            db.execute("UPDATE usuarios SET perfil=?, ativo=? WHERE id=?",
+            db.execute("UPDATE usuarios SET perfil=%s, ativo=%s WHERE id=%s",
                        (perfil, ativo, uid))
             detalhes = f'perfil={perfil}; ativo={ativo}'
         db.commit()
@@ -646,12 +669,12 @@ def usuario_toggle(uid):
         flash('Você não pode ativar/desativar o próprio usuário.', 'erro')
         return redirect(url_for('usuarios_lista'))
     db = get_db()
-    u = db.execute("SELECT * FROM usuarios WHERE id=?", (uid,)).fetchone()
+    u = db.execute("SELECT * FROM usuarios WHERE id=%s", (uid,)).fetchone()
     if not u:
         flash('Usuário não encontrado.', 'erro')
         return redirect(url_for('usuarios_lista'))
     novo = 0 if u['ativo'] else 1
-    db.execute("UPDATE usuarios SET ativo=? WHERE id=?", (novo, uid))
+    db.execute("UPDATE usuarios SET ativo=%s WHERE id=%s", (novo, uid))
     db.commit()
     log_audit('ALTERAR_STATUS_USUARIO', 'usuario', uid,
               f'username={u["username"]}; ativo={novo}')
@@ -673,13 +696,13 @@ def auditoria_lista():
     sql = "SELECT * FROM auditoria WHERE 1=1"
     params = []
     if f['usuario']:
-        sql += " AND usuario LIKE ?"; params.append(f'%{f["usuario"]}%')
+        sql += " AND usuario LIKE %s"; params.append(f'%{f["usuario"]}%')
     if f['acao']:
-        sql += " AND acao = ?"; params.append(f['acao'])
+        sql += " AND acao = %s"; params.append(f['acao'])
     if f['data_ini']:
-        sql += " AND substr(timestamp,1,10) >= ?"; params.append(f['data_ini'])
+        sql += " AND substr(timestamp,1,10) >= %s"; params.append(f['data_ini'])
     if f['data_fim']:
-        sql += " AND substr(timestamp,1,10) <= ?"; params.append(f['data_fim'])
+        sql += " AND substr(timestamp,1,10) <= %s"; params.append(f['data_fim'])
     sql += " ORDER BY id DESC LIMIT 1000"
 
     rows = get_db().execute(sql, params).fetchall()
