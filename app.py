@@ -730,6 +730,7 @@ def auditoria_lista():
 acoes = [r['acao'] for r in get_db().execute(
     "SELECT DISTINCT acao FROM auditoria ORDER BY acao"
 ).fetchall()]
+
     return render_template('auditoria.html', logs=rows, filtros=f, acoes=acoes)
 
 # ==================================================================
